@@ -1,0 +1,995 @@
+openapi: 3.0.3
+info:
+  title: Catatan & To-do API
+  version: 1.0.0
+  description: |
+    Kontrak REST API untuk proyek "Catatan & To-do dengan Login (Proyek #1)".
+    Sumber kebenaran tunggal untuk Backend dan Frontend.
+    Hanya Arsitek yang boleh mengubah file ini.
+
+    Konvensi:
+    - Semua body request dan response menggunakan JSON `camelCase`.
+    - Semua format error seragam: `{ "error": { "code": "...", "message": "..." } }`.
+    - Endpoint terproteksi menggunakan header `Authorization: Bearer <accessToken>`.
+
+servers:
+  - url: http://localhost:3000
+    description: Server pengembangan lokal
+
+tags:
+  - name: System
+    description: Pemeriksaan kesehatan layanan
+  - name: Auth
+    description: F1 — Registrasi, login, logout, dan profil pengguna aktif
+  - name: Tasks
+    description: F2 — Pengelolaan tugas pribadi (CRUD, pencarian, filter, pagination)
+  - name: Categories
+    description: F3 — Pengelolaan kategori pribadi
+
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Cek status server dan koneksi database
+      description: Endpoint publik untuk memastikan API dan database berjalan normal.
+      responses:
+        '200':
+          description: Layanan sehat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                database: connected
+                timestamp: '2026-11-24T10:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Daftar akun pengguna baru (US-1)
+      description: Membuat akun baru dengan nama, email unik, dan password minimal 8 karakter.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              name: Budi Santoso
+              email: budi@contoh.id
+              password: rahasia123
+      responses:
+        '201':
+          description: Pendaftaran berhasil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                user:
+                  id: 550e8400-e29b-41d4-a716-446655440001
+                  name: Budi Santoso
+                  email: budi@contoh.id
+                  createdAt: '2026-11-24T10:05:00.000Z'
+                accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.contoh-token-jwt.tanda-tangan
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Email sudah terdaftar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: CONFLICT
+                  message: Email sudah terdaftar. Silakan gunakan email lain atau login.
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login pengguna (US-2)
+      description: |
+        Memverifikasi email dan password lalu mengembalikan JWT access token.
+        Jika gagal, pesan tidak menyebutkan apakah email atau password yang salah.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: budi@contoh.id
+              password: rahasia123
+      responses:
+        '200':
+          description: Login berhasil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                user:
+                  id: 550e8400-e29b-41d4-a716-446655440001
+                  name: Budi Santoso
+                  email: budi@contoh.id
+                  createdAt: '2026-11-24T10:05:00.000Z'
+                accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.contoh-token-jwt.tanda-tangan
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Email atau password salah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: INVALID_CREDENTIALS
+                  message: Email atau password salah.
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout pengguna (US-3)
+      description: Mengakhiri sesi di perangkat saat ini. Klien menghapus access token setelah menerima respons sukses.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logout berhasil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: Anda berhasil keluar dari akun.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Ambil profil pengguna yang sedang login (US-2, US-4)
+      description: Digunakan frontend untuk memverifikasi apakah token masih valid saat aplikasi dimuat.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profil pengguna aktif
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                user:
+                  id: 550e8400-e29b-41d4-a716-446655440001
+                  name: Budi Santoso
+                  email: budi@contoh.id
+                  createdAt: '2026-11-24T10:05:00.000Z'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/tasks:
+    get:
+      tags: [Tasks]
+      summary: Ambil daftar tugas milik pengguna (US-6, US-9)
+      description: |
+        Mengembalikan daftar tugas milik pengguna yang sedang login, diurutkan dari yang terbaru (`createdAt DESC`).
+        Mendukung pagination (bawaan 10 item per halaman), pencarian judul (`q`), serta filter status, prioritas, dan kategori.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Nomor halaman (mulai dari 1)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Jumlah item per halaman (bawaan 10, maksimal 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+        - name: q
+          in: query
+          description: Kata kunci pencarian pada judul tugas (case-insensitive)
+          schema:
+            type: string
+            maxLength: 120
+        - name: status
+          in: query
+          description: Filter berdasarkan status tugas
+          schema:
+            $ref: '#/components/schemas/TaskStatus'
+        - name: priority
+          in: query
+          description: Filter berdasarkan prioritas tugas
+          schema:
+            $ref: '#/components/schemas/TaskPriority'
+        - name: categoryId
+          in: query
+          description: Filter berdasarkan ID kategori (UUID)
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Daftar tugas berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskListResponse'
+              example:
+                data:
+                  - id: 770e8400-e29b-41d4-a716-446655440102
+                    title: Selesaikan laporan praktikum basis data
+                    description: Tambahkan ERD dan hasil uji query index.
+                    status: doing
+                    priority: tinggi
+                    dueDate: '2026-11-28T16:59:00.000Z'
+                    categoryId: 660e8400-e29b-41d4-a716-446655440010
+                    category:
+                      id: 660e8400-e29b-41d4-a716-446655440010
+                      name: Kuliah
+                    createdAt: '2026-11-24T11:00:00.000Z'
+                    updatedAt: '2026-11-24T11:30:00.000Z'
+                  - id: 770e8400-e29b-41d4-a716-446655440101
+                    title: Beli pulsa dan bayar listrik kos
+                    description: null
+                    status: todo
+                    priority: sedang
+                    dueDate: null
+                    categoryId: null
+                    category: null
+                    createdAt: '2026-11-24T10:20:00.000Z'
+                    updatedAt: '2026-11-24T10:20:00.000Z'
+                meta:
+                  page: 1
+                  limit: 10
+                  totalItems: 2
+                  totalPages: 1
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [Tasks]
+      summary: Buat tugas baru (US-5, US-11)
+      description: |
+        Membuat tugas baru milik pengguna yang sedang login.
+        Status bawaan adalah `todo`, prioritas bawaan adalah `sedang`.
+        Jika `categoryId` disertakan, kategori harus ada dan milik pengguna sendiri.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+            example:
+              title: Pelajari cara kerja JWT dan bcrypt
+              description: Catat alur login dari form frontend sampai database.
+              priority: tinggi
+              dueDate: '2026-11-30T12:00:00.000Z'
+              categoryId: 660e8400-e29b-41d4-a716-446655440010
+      responses:
+        '201':
+          description: Tugas berhasil dibuat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+              example:
+                data:
+                  id: 770e8400-e29b-41d4-a716-446655440103
+                  title: Pelajari cara kerja JWT dan bcrypt
+                  description: Catat alur login dari form frontend sampai database.
+                  status: todo
+                  priority: tinggi
+                  dueDate: '2026-11-30T12:00:00.000Z'
+                  categoryId: 660e8400-e29b-41d4-a716-446655440010
+                  category:
+                    id: 660e8400-e29b-41d4-a716-446655440010
+                    name: Kuliah
+                  createdAt: '2026-11-24T12:00:00.000Z'
+                  updatedAt: '2026-11-24T12:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Kategori yang dipilih tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: Kategori tidak ditemukan.
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/tasks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID tugas (UUID)
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags: [Tasks]
+      summary: Ambil detail satu tugas (US-6, US-7)
+      description: Mengembalikan detail satu tugas milik pengguna. Mengembalikan 403 jika tugas milik pengguna lain.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Detail tugas ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+              example:
+                data:
+                  id: 770e8400-e29b-41d4-a716-446655440102
+                  title: Selesaikan laporan praktikum basis data
+                  description: Tambahkan ERD dan hasil uji query index.
+                  status: doing
+                  priority: tinggi
+                  dueDate: '2026-11-28T16:59:00.000Z'
+                  categoryId: 660e8400-e29b-41d4-a716-446655440010
+                  category:
+                    id: 660e8400-e29b-41d4-a716-446655440010
+                    name: Kuliah
+                  createdAt: '2026-11-24T11:00:00.000Z'
+                  updatedAt: '2026-11-24T11:30:00.000Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/TaskNotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    patch:
+      tags: [Tasks]
+      summary: Ubah isi atau status tugas (US-7, US-11)
+      description: |
+        Memperbarui sebagian atau seluruh field tugas.
+        Status boleh maju atau mundur di antara `todo`, `doing`, dan `done`.
+        Mengirim `categoryId: null`, `description: null`, atau `dueDate: null` akan mengosongkan nilai tersebut.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskRequest'
+            example:
+              status: done
+              priority: sedang
+      responses:
+        '200':
+          description: Tugas berhasil diperbarui
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+              example:
+                data:
+                  id: 770e8400-e29b-41d4-a716-446655440102
+                  title: Selesaikan laporan praktikum basis data
+                  description: Tambahkan ERD dan hasil uji query index.
+                  status: done
+                  priority: sedang
+                  dueDate: '2026-11-28T16:59:00.000Z'
+                  categoryId: 660e8400-e29b-41d4-a716-446655440010
+                  category:
+                    id: 660e8400-e29b-41d4-a716-446655440010
+                    name: Kuliah
+                  createdAt: '2026-11-24T11:00:00.000Z'
+                  updatedAt: '2026-11-24T13:15:00.000Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/TaskNotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [Tasks]
+      summary: Hapus tugas secara permanen (US-8)
+      description: Menghapus tugas milik pengguna secara permanen (hard delete).
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Tugas berhasil dihapus (tanpa body)
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/TaskNotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/categories:
+    get:
+      tags: [Categories]
+      summary: Ambil daftar kategori milik pengguna (US-10, US-11)
+      description: Mengembalikan semua kategori pribadi pengguna diurutkan alfabetis (`name ASC`), beserta jumlah tugas di masing-masing kategori.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Daftar kategori berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryListResponse'
+              example:
+                data:
+                  - id: 660e8400-e29b-41d4-a716-446655440010
+                    name: Kuliah
+                    taskCount: 3
+                    createdAt: '2026-11-24T10:10:00.000Z'
+                    updatedAt: '2026-11-24T10:10:00.000Z'
+                  - id: 660e8400-e29b-41d4-a716-446655440011
+                    name: Pribadi
+                    taskCount: 1
+                    createdAt: '2026-11-24T10:12:00.000Z'
+                    updatedAt: '2026-11-24T10:12:00.000Z'
+                  - id: 660e8400-e29b-41d4-a716-446655440012
+                    name: Proyek
+                    taskCount: 0
+                    createdAt: '2026-11-24T10:15:00.000Z'
+                    updatedAt: '2026-11-24T10:15:00.000Z'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [Categories]
+      summary: Buat kategori baru (US-10)
+      description: Membuat kategori pribadi baru (1-50 karakter, unik per pengguna).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+            example:
+              name: Organisasi
+      responses:
+        '201':
+          description: Kategori berhasil dibuat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryResponse'
+              example:
+                data:
+                  id: 660e8400-e29b-41d4-a716-446655440013
+                  name: Organisasi
+                  taskCount: 0
+                  createdAt: '2026-11-24T12:10:00.000Z'
+                  updatedAt: '2026-11-24T12:10:00.000Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          description: Nama kategori sudah digunakan oleh pengguna ini
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: CONFLICT
+                  message: Kategori dengan nama tersebut sudah ada.
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/categories/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID kategori (UUID)
+        schema:
+          type: string
+          format: uuid
+
+    patch:
+      tags: [Categories]
+      summary: Ubah nama kategori (US-10)
+      description: Mengubah nama kategori milik pengguna. Nama tetap harus unik per pengguna.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+            example:
+              name: Kuliah Semester 5
+      responses:
+        '200':
+          description: Kategori berhasil diperbarui
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryResponse'
+              example:
+                data:
+                  id: 660e8400-e29b-41d4-a716-446655440010
+                  name: Kuliah Semester 5
+                  taskCount: 3
+                  createdAt: '2026-11-24T10:10:00.000Z'
+                  updatedAt: '2026-11-24T12:30:00.000Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/CategoryNotFoundError'
+        '409':
+          description: Nama kategori sudah digunakan oleh pengguna ini
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: CONFLICT
+                  message: Kategori dengan nama tersebut sudah ada.
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [Categories]
+      summary: Hapus kategori (US-10)
+      description: |
+        Menghapus kategori milik pengguna secara permanen (hard delete).
+        Tugas yang terhubung ke kategori ini TIDAK ikut terhapus; `categoryId` pada tugas berubah menjadi `null` (tanpa kategori).
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Kategori berhasil dihapus (tanpa body)
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/CategoryNotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token yang diperoleh dari `/api/auth/login` atau `/api/auth/register`.
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, database, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        database:
+          type: string
+          enum: [connected]
+        timestamp:
+          type: string
+          format: date-time
+
+    MessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    User:
+      type: object
+      required: [id, name, email, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        createdAt:
+          type: string
+          format: date-time
+
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        password:
+          type: string
+          minLength: 8
+          maxLength: 100
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        password:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    AuthResponse:
+      type: object
+      required: [user, accessToken]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        accessToken:
+          type: string
+
+    UserResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+
+    TaskStatus:
+      type: string
+      enum: [todo, doing, done]
+
+    TaskPriority:
+      type: string
+      enum: [rendah, sedang, tinggi]
+
+    CategorySummary:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+
+    Category:
+      type: object
+      required: [id, name, taskCount, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        taskCount:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CategoryRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+
+    CategoryResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Category'
+
+    CategoryListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+
+    Task:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - status
+        - priority
+        - dueDate
+        - categoryId
+        - category
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        priority:
+          $ref: '#/components/schemas/TaskPriority'
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+        category:
+          allOf:
+            - $ref: '#/components/schemas/CategorySummary'
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateTaskRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        priority:
+          $ref: '#/components/schemas/TaskPriority'
+          default: sedang
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+
+    UpdateTaskRequest:
+      type: object
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        priority:
+          $ref: '#/components/schemas/TaskPriority'
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+
+    TaskResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Task'
+
+    PaginationMeta:
+      type: object
+      required: [page, limit, totalItems, totalPages]
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+        totalItems:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+
+    TaskListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - VALIDATION_ERROR
+                - INVALID_CREDENTIALS
+                - UNAUTHORIZED
+                - FORBIDDEN
+                - NOT_FOUND
+                - CONFLICT
+                - INTERNAL_SERVER_ERROR
+            message:
+              type: string
+
+  responses:
+    ValidationError:
+      description: Input tidak valid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Judul tugas wajib diisi (1 sampai 120 karakter).
+
+    UnauthorizedError:
+      description: Token tidak ada, tidak valid, atau sudah kedaluwarsa
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Sesi Anda telah berakhir. Silakan login kembali.
+
+    ForbiddenError:
+      description: Tidak memiliki izin untuk mengakses data milik pengguna lain
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: FORBIDDEN
+              message: Anda tidak memiliki akses ke data ini.
+
+    TaskNotFoundError:
+      description: Tugas tidak ditemukan
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Tugas tidak ditemukan.
+
+    CategoryNotFoundError:
+      description: Kategori tidak ditemukan
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Kategori tidak ditemukan.
+
+    InternalServerError:
+      description: Kesalahan internal pada server
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INTERNAL_SERVER_ERROR
+              message: Terjadi kesalahan pada server. Silakan coba lagi nanti.
