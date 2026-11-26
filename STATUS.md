@@ -2,7 +2,7 @@
 
 Proyek: Catatan & To-do dengan Login (Proyek #1 — For Learn)
 Folder: `Web/catatan-todo-login-for-learn-v1`
-Fase saat ini: Fase 2 (Selesai — Siap masuk Fase 3 Implementasi)
+Fase saat ini: Fase 3 (Implementasi bertahap — Backend T04 sedang dikerjakan)
 Putaran perbaikan QA: 0 / 3
 Gate 1: disetujui (2026-11-25) · Gate 2: belum
 
@@ -11,7 +11,7 @@ Gate 1: disetujui (2026-11-25) · Gate 2: belum
 | T01 | Susun PRD | Koordinator | DONE | `docs/PRD.md` terverifikasi lengkap (F1–F3, US-1 s.d. US-11, out-of-scope, DoD) |
 | T02 | Rancang arsitektur + openapi.yaml | Arsitek | DONE | `docs/ARCHITECTURE.md` dan `docs/openapi.yaml` selesai dan saling konsisten |
 | T03 | Setup repo, Docker, CI | Koordinator | DONE | Repo Git, branch (`feat/backend`, `feat/frontend`), `docker-compose.yml`, `.env.example`, `.gitignore`, dan CI selesai; `docker compose up -d` terverifikasi menjalankan `catatan-todo-db` (PostgreSQL 16) dalam status `healthy` |
-| T04 | Implementasi backend | Backend | TODO | Siap mulai di branch `feat/backend` |
+| T04 | Implementasi backend | Backend | DONE | 14 endpoint REST API Fastify + Prisma + Zod selesai sesuai `docs/openapi.yaml`; migrasi `init` & seed idempoten lolos; `lint`, `typecheck`, `build`, dan 16/16 tes Vitest lolos |
 | T05 | Implementasi frontend (mock) | Frontend | TODO | Siap mulai paralel di branch `feat/frontend` |
 | T06 | Integrasi | Backend + Frontend | TODO | Setelah T04 & T05 |
 | T07 | Audit QA | QA & Reviewer | TODO | Setelah T06 |
